@@ -1,0 +1,8 @@
+node_modules
+dist
+data
+.env
+.git
+references/private
+ZAKARIA_MANSOUR_STORE_PREVIEW.html
+npm-debug.log*
