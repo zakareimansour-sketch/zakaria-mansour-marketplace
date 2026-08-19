@@ -1,0 +1,6 @@
+file '/home/user/zakaria-marketplace/tutorial/clips/01.mp4'
+file '/home/user/zakaria-marketplace/tutorial/clips/02.mp4'
+file '/home/user/zakaria-marketplace/tutorial/clips/03.mp4'
+file '/home/user/zakaria-marketplace/tutorial/clips/04.mp4'
+file '/home/user/zakaria-marketplace/tutorial/clips/05.mp4'
+file '/home/user/zakaria-marketplace/tutorial/clips/06.mp4'

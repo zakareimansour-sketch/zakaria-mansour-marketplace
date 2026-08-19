@@ -1,0 +1,11 @@
+{
+  "name": "ZAKARIA MANSOUR — Global Digital Marketplace",
+  "short_name": "ZM Market",
+  "description": "السوق الرقمي العالمي للمنتجات والخدمات والكورسات.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#070707",
+  "theme_color": "#070707",
+  "lang": "ar",
+  "dir": "rtl"
+}

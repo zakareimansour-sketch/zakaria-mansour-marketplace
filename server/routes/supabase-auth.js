@@ -1,0 +1,20 @@
+import { Router } from 'express';
+import bcrypt from 'bcryptjs';
+import { z } from 'zod';
+import { publicUser, throwIfError } from '../supabase-client.js';
+import { rateLimit } from '../rate-limit.js';
+
+const email = z.string().trim().email().max(200).transform(v=>v.toLowerCase());
+const password = z.string().min(8).max(100).regex(/[A-Za-z]/).regex(/[0-9]/);
+const validate = (schema, body, res) => { const parsed=schema.safeParse(body); if(!parsed.success){res.status(400).json({error:'VALIDATION_ERROR',message:'البيانات المدخلة غير صحيحة.',fields:parsed.error.flatten().fieldErrors});return null;} return parsed.data; };
+
+export function createSupabaseAuthRouter(ctx, setupToken) {
+  const router=Router(); const {supabase,security,sessionPayload,audit,userById}=ctx;
+  router.get('/setup/status', async(_req,res)=>{const result=await supabase.from('users').select('id',{count:'exact',head:true}).eq('role','owner');if(result.error)return res.status(500).json({error:'DATABASE_ERROR'});res.json({ownerConfigured:(result.count||0)>0});});
+  router.post('/setup/owner',rateLimit({windowMs:3600000,max:5,keyPrefix:'owner-setup'}),async(req,res,next)=>{try{const existing=await supabase.from('users').select('id',{count:'exact',head:true}).eq('role','owner');throwIfError(existing);if((existing.count||0)>0)return res.status(409).json({error:'OWNER_EXISTS',message:'تم إعداد المالك بالفعل.'});if(!setupToken||req.headers['x-setup-token']!==setupToken)return res.status(403).json({error:'INVALID_SETUP_TOKEN',message:'رمز الإعداد غير صحيح.'});const data=validate(z.object({name:z.string().trim().min(2).max(100),email,password}),req.body,res);if(!data)return;const hash=await bcrypt.hash(data.password,12);const result=await supabase.from('users').insert({name:data.name,email:data.email,password_hash:hash,role:'owner'}).select().single();const user=throwIfError(result);await audit(user.id,'owner.setup','user',user.id);res.status(201).json(sessionPayload(res,user));}catch(e){next(e);}});
+  router.post('/auth/register',rateLimit({windowMs:3600000,max:8,keyPrefix:'register'}),async(req,res,next)=>{try{const data=validate(z.object({name:z.string().trim().min(2).max(100),email,password,preferredLanguage:z.enum(['ar','en']).default('ar')}),req.body,res);if(!data)return;const exists=await supabase.from('users').select('id').ilike('email',data.email).maybeSingle();throwIfError(exists);if(exists.data)return res.status(409).json({error:'EMAIL_EXISTS',message:'البريد مستخدم بالفعل.'});const hash=await bcrypt.hash(data.password,12);const result=await supabase.from('users').insert({name:data.name,email:data.email,password_hash:hash,preferred_language:data.preferredLanguage}).select().single();const user=throwIfError(result);await audit(user.id,'user.register','user',user.id);res.status(201).json(sessionPayload(res,user));}catch(e){next(e);}});
+  router.post('/auth/login',rateLimit({windowMs:900000,max:10,keyPrefix:'login',message:'محاولات دخول كثيرة. حاول لاحقًا.'}),async(req,res,next)=>{try{const data=validate(z.object({email,password:z.string().min(1).max(100)}),req.body,res);if(!data)return;const result=await supabase.from('users').select('*').ilike('email',data.email).maybeSingle();const user=throwIfError(result);if(!user||!await bcrypt.compare(data.password,user.password_hash))return res.status(401).json({error:'INVALID_CREDENTIALS',message:'البريد أو كلمة المرور غير صحيحة.'});if(user.status!=='active')return res.status(403).json({error:'ACCOUNT_BLOCKED'});await audit(user.id,'user.login','user',user.id);res.json(sessionPayload(res,user));}catch(e){next(e);}});
+  router.post('/auth/logout',security.authenticate,async(req,res)=>{await audit(Number(req.auth.sub),'user.logout','user',Number(req.auth.sub));res.clearCookie('zm_session',{path:'/'});res.clearCookie('zm_csrf',{path:'/'});res.json({ok:true});});
+  router.get('/me',security.authenticate,async(req,res,next)=>{try{const user=await userById(req.auth.sub);if(!user)return res.status(404).json({error:'USER_NOT_FOUND'});res.json({user:publicUser(user)});}catch(e){next(e);}});
+  return router;
+}
